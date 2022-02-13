@@ -1,3 +1,5 @@
+// Version 1.1 (2/12/2022)
+
 Event::Attach( eventClientKilled, QuakeAnnouncer::onClientKilled );
 Event::Attach( eventClientTeamKilled, QuakeAnnouncer::onClientTeamKilled );
 Event::Attach( eventClientSuicided, QuakeAnnouncer::onClientSuicided );
@@ -28,7 +30,7 @@ $QuakeAnnouncer::DEBUG = false;
 $QuakeAnnouncer::SOUND_BUFFER = 2;
 
 // Time between kills to continue a kill streak
-$QuakeAnnouncer::KILL_STREAK_TIME = 5;
+$QuakeAnnouncer::KILL_STREAK_TIME = 4;
 
 // Time between consecutive team kills to continue a streak
 $QuakeAnnouncer::TEAMKILL_TIME = 10;
@@ -41,7 +43,7 @@ $QuakeAnnouncer::LONG_CATCH_TIME = 3;
 $QuakeAnnouncer::FAST_CAP_TIME = 15;
 
 // Time between when a flag was picked up by a teammate and when it was capped
-$QuakeAnnouncer::ASSIST_TIME = 5;
+$QuakeAnnouncer::ASSIST_TIME = 4;
 
 // Time between a flag return and a camp
 $QuakeAnnouncer::CAMP_TIME = 1;
@@ -65,6 +67,30 @@ $QuakeAnnouncer::countdownStarted = false;
 function QuakeAnnouncer::debugEcho(%msg) {
    if ($QuakeAnnouncer::DEBUG) {
       echo(%msg);
+   }
+}
+
+// Highlight first and second
+function QuakeAnnouncer::formatMessage1( %subject, %verb, %end ) {
+	return "<JC><F2>" @ String::escapeFormatting(%subject) @ " <F2>" @ %verb @ " <F1>" @ %end;
+}
+
+// Highlight first and last
+function QuakeAnnouncer::formatMessage2( %subject, %middle, %verb ) {
+	return "<JC><F2>" @ String::escapeFormatting(%subject) @ " <F1>" @ %middle @ " <F2>" @ %verb;
+}
+
+// Highlight first, third, and last
+function QuakeAnnouncer::formatMessage3( %subject0, %join, %subject1, %middle, %verb ) {
+	return "<JC><F2>" @ String::escapeFormatting(%subject0) @ " <F1>" @ %join @ " <F2>" @ %subject1 @ " <F1>" @ %middle @ " <F2>" @ %verb;
+}
+
+function QuakeAnnouncer::remoteBPWithDelay(%msg, %delay) {
+   QuakeAnnouncer::debugEcho("[QA::playSoundWithDelay:" @ %sound);
+   if (%delay == 0) {
+      remoteBP( 2048, %msg, 3);
+   } else {
+      schedule("remoteBP(2048, " @ %msg @ ", 3);", %delay);
    }
 }
 
@@ -158,10 +184,21 @@ function QuakeAnnouncer::onCountdownStarted( %time ) {
       "battle_prepare_04",
       1
    );
+   QuakeAnnouncer::remoteBPWithDelay(
+      QuakeAnnouncer::formatMessage2( "", "Prepare for battle!", ""), 1
+   );
    if ( %time == 30 ) {
       QuakeAnnouncer::playSoundWithDelay("count_battle_10", 20);
+      QuakeAnnouncer::remoteBPWithDelay(
+         QuakeAnnouncer::formatMessage2( "", "Battle begins in 10 seconds!", ""), 20
+      );
    }
 }
+
+function getName( %cl ) {
+   return String::escapeFormatting ( Client::getName( %cl ) );
+}
+
 
 function QuakeAnnouncer::onClientKilled ( %killer, %victim, %damageType ) {
    QuakeAnnouncer::debugEcho("[QA::onClientKilled] killer:" @ %killer @ ", victim:" @ %victim  @ ", type:" @ %damageType);
@@ -191,12 +228,21 @@ function QuakeAnnouncer::onClientKilled ( %killer, %victim, %damageType ) {
       $QuakeAnnouncer::killSpree[ %killer ] += 1;
       if ($QuakeAnnouncer::killStreak[ %killer ] == 2) {
          QuakeAnnouncer::playSoundWithDelay("doublekill", %count * $QuakeAnnouncer::SOUND_BUFFER);
+         QuakeAnnouncer::remoteBPWithDelay(
+            QuakeAnnouncer::formatMessage2( getName( %killer ), "just got a", "double kill!"), %count * $QuakeAnnouncer::SOUND_BUFFER
+         );
          %count++;
       } else if ($QuakeAnnouncer::killStreak[ %killer ] == 3) {
          QuakeAnnouncer::playSoundWithDelay("triplekill", %count * $QuakeAnnouncer::SOUND_BUFFER);
+         QuakeAnnouncer::remoteBPWithDelay(
+            QuakeAnnouncer::formatMessage2( getName( %killer ), "just got a", "TRIPLE kill!"), %count * $QuakeAnnouncer::SOUND_BUFFER
+         );
          %count++;
       } else if ($QuakeAnnouncer::killStreak[ %killer ] > 3) {
          QuakeAnnouncer::playSoundWithDelay("ultrakill", %count * $QuakeAnnouncer::SOUND_BUFFER);
+         QuakeAnnouncer::remoteBPWithDelay(
+            QuakeAnnouncer::formatMessage2( getName( %killer ), "just got an", "ULTRA KILL!"), %count * $QuakeAnnouncer::SOUND_BUFFER
+         );
          %count++;
       }
    } else {
@@ -205,6 +251,9 @@ function QuakeAnnouncer::onClientKilled ( %killer, %victim, %damageType ) {
       $QuakeAnnouncer::killSpree[ %killer ] += 1;
       if ($QuakeAnnouncer::killSpree[ %killer ] > 2) {
          QuakeAnnouncer::playSoundWithDelay("killingspree", %count * $QuakeAnnouncer::SOUND_BUFFER);
+         QuakeAnnouncer::remoteBPWithDelay(
+            QuakeAnnouncer::formatMessage2( getName( %killer ), "is on a", "killing spree!"), %count * $QuakeAnnouncer::SOUND_BUFFER
+         );
          %count++;
       }
    }
@@ -240,6 +289,9 @@ function QuakeAnnouncer::onClientTeamKilled ( %killer, %victim, %damageType ) {
       $QuakeAnnouncer::teamKillStreak[ %killer ] += 1;
       if ($QuakeAnnouncer::teamKillStreak[ %killer ] > 1) {
          localSound("teamkiller");
+         QuakeAnnouncer::remoteBPWithDelay(
+            QuakeAnnouncer::formatMessage2( getName( %killer ), "is a", "TEAM KILLER!"), 0
+         );
       }
    } else {
       $QuakeAnnouncer::lastTeamKillTime[ %killer ] = getSimTime();
@@ -262,16 +314,28 @@ function QuakeAnnouncer::onFlagCarrierKill ( %killer ) {
          "dominating",
          %count * $QuakeAnnouncer::SOUND_BUFFER
       );
+      QuakeAnnouncer::remoteBPWithDelay(
+         QuakeAnnouncer::formatMessage2( getName( %killer ), "is", "dominating!"),
+         %count * $QuakeAnnouncer::SOUND_BUFFER
+      );
       %count++;
    } else if (%carrierKills == 20) {
       QuakeAnnouncer::playSoundWithDelay(
          "godlike",
          %count * $QuakeAnnouncer::SOUND_BUFFER
       );
+      QuakeAnnouncer::remoteBPWithDelay(
+         QuakeAnnouncer::formatMessage2( getName( %killer ), "is", "GODLIKE!"),
+         %count * $QuakeAnnouncer::SOUND_BUFFER
+      );
       %count++;
    } else if (%carrierKills >= 25) {
       QuakeAnnouncer::playSoundWithDelay(
          "holyshit",
+         %count * $QuakeAnnouncer::SOUND_BUFFER
+      );
+      QuakeAnnouncer::remoteBPWithDelay(
+         QuakeAnnouncer::formatMessage2( getName( %killer ), "is", "BEYOND GODLIKE!"),
          %count * $QuakeAnnouncer::SOUND_BUFFER
       );
       %count++;
@@ -283,10 +347,18 @@ function QuakeAnnouncer::onFlagCarrierKill ( %killer ) {
 
 function QuakeAnnouncer::onFlagClutchReturn ( %cl ) {
    QuakeAnnouncer::playSoundWithDelay("humiliation", $QuakeAnnouncer::SOUND_BUFFER);
+   QuakeAnnouncer::remoteBPWithDelay(
+      QuakeAnnouncer::formatMessage1( getName( %cl ), "humiliated",  "the other team!"),
+      $QuakeAnnouncer::SOUND_BUFFER
+   );
 }
 
 function QuakeAnnouncer::onFlagEGrab ( %cl ) {
    QuakeAnnouncer::playSoundWithDelay("ninja", 0);
+   QuakeAnnouncer::remoteBPWithDelay(
+      QuakeAnnouncer::formatMessage2( getName( %cl ), "is a", "ninja!"),
+      0
+   );
 }
 
 function QuakeAnnouncer::onFlagInt ( %team, %cl ) {
@@ -295,8 +367,16 @@ function QuakeAnnouncer::onFlagInt ( %team, %cl ) {
       // I delay this because I also have a flag sound on friendly return so I need to delay it.
       // If you don't have another flag sound script, you can set this delay to 0.
       QuakeAnnouncer::playSoundWithDelay("denied", $QuakeAnnouncer::SOUND_BUFFER);
+      QuakeAnnouncer::remoteBPWithDelay(
+         QuakeAnnouncer::formatMessage1( getName( %cl ), "denied", "the enemy!"),
+         $QuakeAnnouncer::SOUND_BUFFER
+      );
    } else {
       QuakeAnnouncer::playSoundWithDelay("denied", 0);
+      QuakeAnnouncer::remoteBPWithDelay(
+         QuakeAnnouncer::formatMessage1( getName( %cl ), "denied", "the enemy!"),
+         0
+      );
    }
    // Midair return after a CK
    // if ($QuakeAnnouncer::lastCarrierKill[ %team ] == %cl) {
@@ -316,6 +396,10 @@ function QuakeAnnouncer::onFlagCap ( %team, %cl ) {
          "firstblood",
          %count * $QuakeAnnouncer::SOUND_BUFFER
       );
+      QuakeAnnouncer::remoteBPWithDelay(
+         QuakeAnnouncer::formatMessage2( getName( %cl ), "drew", "first blood!"),
+         %count * $QuakeAnnouncer::SOUND_BUFFER
+      );
       %count += 1;
    }
 
@@ -327,16 +411,28 @@ function QuakeAnnouncer::onFlagCap ( %team, %cl ) {
          "hattrick",
          %count * $QuakeAnnouncer::SOUND_BUFFER
       );
+      QuakeAnnouncer::remoteBPWithDelay(
+         QuakeAnnouncer::formatMessage2( getName( %cl ), "scored a", "hat trick!"),
+         %count * $QuakeAnnouncer::SOUND_BUFFER
+      );
       %count += 1;
    } else if (%caps == 4) {
       QuakeAnnouncer::playSoundWithDelay(
          "unstoppable",
          %count * $QuakeAnnouncer::SOUND_BUFFER
       );
+      QuakeAnnouncer::remoteBPWithDelay(
+         QuakeAnnouncer::formatMessage2( getName( %cl ), "is", "unstoppable!"),
+         %count * $QuakeAnnouncer::SOUND_BUFFER
+      );
       %count += 1;
    } else if (%caps > 4) {
       QuakeAnnouncer::playSoundWithDelay(
          "rampage",
+         %count * $QuakeAnnouncer::SOUND_BUFFER
+      );
+      QuakeAnnouncer::remoteBPWithDelay(
+         QuakeAnnouncer::formatMessage2( getName( %cl ), "is on a", "RAMPAGE!"),
          %count * $QuakeAnnouncer::SOUND_BUFFER
       );
       %count += 1;
@@ -367,6 +463,14 @@ function QuakeAnnouncer::onFlagCap ( %team, %cl ) {
             "assist",
             %count * $QuakeAnnouncer::SOUND_BUFFER
          );
+         QuakeAnnouncer::remoteBPWithDelay(
+            QuakeAnnouncer::formatMessage2(
+               getName($QuakeAnnouncer::lastFlagCarrier[ %team ]),
+               "just assisted",
+               getName( %cl ) @ "!"
+            ),
+            %count * $QuakeAnnouncer::SOUND_BUFFER
+         );
          %count += 1;
       }
    }
@@ -389,10 +493,26 @@ function QuakeAnnouncer::onFlagCap ( %team, %cl ) {
             "taken_lead",
             %count * $QuakeAnnouncer::SOUND_BUFFER
          );
+         QuakeAnnouncer::remoteBPWithDelay(
+            QuakeAnnouncer::formatMessage2(
+               "Your team has",
+               "taken",
+               "the lead!"
+            ),
+            %count * $QuakeAnnouncer::SOUND_BUFFER
+         );
          %count += 1;
       } else {
          QuakeAnnouncer::playSoundWithDelay(
             "lost_lead",
+            %count * $QuakeAnnouncer::SOUND_BUFFER
+         );
+         QuakeAnnouncer::remoteBPWithDelay(
+            QuakeAnnouncer::formatMessage2(
+               "Your team has",
+               "lost",
+               "the lead!"
+            ),
             %count * $QuakeAnnouncer::SOUND_BUFFER
          );
          %count += 1;
@@ -410,6 +530,19 @@ function QuakeAnnouncer::onFlagCap ( %team, %cl ) {
             "ownage",
             %count * $QuakeAnnouncer::SOUND_BUFFER
          );
+         if (%team == 0) {
+            %teamName = "Blood Eagle";
+         } else {
+            %teamName = "Diamond Sword";
+         }
+         QuakeAnnouncer::remoteBPWithDelay(
+            QuakeAnnouncer::formatMessage2(
+               %teamName,
+               "is",
+               "owning!"
+            ),
+            %count * $QuakeAnnouncer::SOUND_BUFFER
+         );
          %count += 1;
       }
    } else {
@@ -425,6 +558,15 @@ function QuakeAnnouncer::onFlagCap ( %team, %cl ) {
          "massacre",
          %count * $QuakeAnnouncer::SOUND_BUFFER
       );
+      QuakeAnnouncer::remoteBPWithDelay(
+         QuakeAnnouncer::formatMessage2(
+            "",
+            "This is a",
+            "massacre!"
+         ),
+         %count * $QuakeAnnouncer::SOUND_BUFFER
+      );
+
       %count += 1;
    }
 
@@ -432,7 +574,14 @@ function QuakeAnnouncer::onFlagCap ( %team, %cl ) {
    if (%flagTeam == Team::Enemy() && %cappingTeamCaps == 7 && %flagTeamCaps != 7) {
       QuakeAnnouncer::playRandomSound2(
          "finishit",
-         "endit",
+         %count * $QuakeAnnouncer::SOUND_BUFFER
+      );
+      QuakeAnnouncer::remoteBPWithDelay(
+         QuakeAnnouncer::formatMessage2(
+            "Match ends in",
+            "ONE",
+            "cap!"
+         ),
          %count * $QuakeAnnouncer::SOUND_BUFFER
       );
       %count += 1;
@@ -454,8 +603,19 @@ function QuakeAnnouncer::onFlagGrab( %team, %cl ) {
    if (!$QuakeAnnouncer::lastFlagReturn[ %team ]) {
       return;
    }
-   if (getSimTime() - $QuakeAnnouncer::lastFlagReturn[ %team ] < $QuakeAnnouncer::CAMP_TIME) {
+   if (
+      $QuakeAnnouncer::lastFlagReturn[ %team ] &&
+      getSimTime() - $QuakeAnnouncer::lastFlagReturn[ %team ] < $QuakeAnnouncer::CAMP_TIME
+   ) {
       localSound("camper");
+      QuakeAnnouncer::remoteBPWithDelay(
+         QuakeAnnouncer::formatMessage2(
+            getName(%cl),
+            "is a",
+            "camper!"
+         ),
+         0
+      );
    }
 }
 
@@ -562,6 +722,14 @@ function QuakeAnnouncer::onFlagCatch ( %team, %cl ) {
          "impressive", 
          %count * $QuakeAnnouncer::SOUND_BUFFER
       );
+      QuakeAnnouncer::remoteBPWithDelay(
+         QuakeAnnouncer::formatMessage2(
+            getName(%cl),
+            "is",
+            "impressive!"
+         ),
+         %count * $QuakeAnnouncer::SOUND_BUFFER
+      );
       %count++;
    }
 
@@ -576,14 +744,30 @@ function QuakeAnnouncer::onFlagCatch ( %team, %cl ) {
             %count * $QuakeAnnouncer::SOUND_BUFFER
          );
          %count++;
+         QuakeAnnouncer::remoteBPWithDelay(
+            QuakeAnnouncer::formatMessage2(
+               getName(%cl),
+               "is",
+               "excellent!"
+            ),
+            %count * $QuakeAnnouncer::SOUND_BUFFER
+         );
       }
    }
 }
 
-function QuakeAnnouncer::onMidAirCK () {
+function QuakeAnnouncer::onMidAirCK ( %killer ) {
    QuakeAnnouncer::debugEcho("[QA::onMidAirCK]");
    QuakeAnnouncer::playSoundWithDelay(
       "headshot",
+      0
+   );
+   QuakeAnnouncer::remoteBPWithDelay(
+      QuakeAnnouncer::formatMessage2(
+         getName(%killer),
+         "just scored a",
+         "headshot!"
+      ),
       0
    );
 }
@@ -593,8 +777,25 @@ function QuakeAnnouncer::onMidAirDisc ( %shooter, %victim ) {
    %maGiven = $Collector::MAGiven[ Client::getName( %shooter ) ];
    if (%maGiven == 15) {
       QuakeAnnouncer::playSoundWithDelay("headhunter", $QuakeAnnouncer::SOUND_BUFFER);
+      QuakeAnnouncer::remoteBPWithDelay(
+         QuakeAnnouncer::formatMessage2(
+            getName(%shooter),
+            "is a",
+            "headhunter!"
+         ),
+         $QuakeAnnouncer::SOUND_BUFFER
+      );
+
    } else if (%maGiven >= 20) {
       QuakeAnnouncer::playSoundWithDelay("nasty", $QuakeAnnouncer::SOUND_BUFFER);
+      QuakeAnnouncer::remoteBPWithDelay(
+         QuakeAnnouncer::formatMessage2(
+            getName(%shooter),
+            "is a",
+            "NASTY!"
+         ),
+         $QuakeAnnouncer::SOUND_BUFFER
+      );
    }
 }
 
